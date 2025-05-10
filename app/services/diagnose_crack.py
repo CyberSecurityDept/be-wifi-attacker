@@ -12,9 +12,7 @@ def run_command(cmd, shell=False):
     """Run a command and return its output"""
     print(f"\n[Running] {''.join(cmd) if not shell else cmd}")
     try:
-        result = subprocess.run(
-            cmd, shell=shell, text=True, capture_output=True, timeout=5
-        )
+        result = subprocess.run(cmd, shell=shell, text=True, capture_output=True, timeout=5)
         print(f"[Exit code] {result.returncode}")
         if result.stdout:
             print(f"[Output]\n{result.stdout.strip()}")
@@ -84,9 +82,7 @@ def test_aircrack(cap_file, bssid, wordlist):
 
     # Check if the capture file contains the specified BSSID
     print("\n[Checking if capture file contains the BSSID]")
-    run_command(
-        ["aircrack-ng", "-b", bssid, cap_file, "-J", "test_output"], shell=False
-    )
+    run_command(["aircrack-ng", "-b", bssid, cap_file, "-J", "test_output"], shell=False)
 
     # Run aircrack with a limited number of passwords as a test
     print("\n[Testing aircrack with first 5 passwords from wordlist]")
@@ -119,9 +115,7 @@ def test_aircrack(cap_file, bssid, wordlist):
         print(f"Process verification:\n{ps_output}")
 
         # Check if it's visible with ps aux | grep aircrack-ng
-        grep_output = subprocess.check_output(
-            "ps aux | grep aircrack-ng", shell=True, text=True
-        )
+        grep_output = subprocess.check_output("ps aux | grep aircrack-ng", shell=True, text=True)
         print(f"Grep verification:\n{grep_output}")
 
         # Let it run for a few seconds to verify it's working

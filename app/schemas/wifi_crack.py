@@ -1,5 +1,3 @@
-# app/schemas/wifi_crack.py
-
 from typing import Optional
 from pydantic import BaseModel
 

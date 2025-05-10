@@ -1,9 +1,7 @@
 # app/services/dictionary_service.py
 
 import os
-import shutil
 from typing import List, Dict
-from pathlib import Path
 
 DICT_DIR = "dictionaries"
 
@@ -21,9 +19,7 @@ class DictionaryService:
                 word_count = 0
                 with open(path, "r", errors="ignore") as f:
                     word_count = sum(1 for _ in f)
-                dictionaries.append(
-                    {"name": file, "path": path, "word_count": word_count}
-                )
+                dictionaries.append({"name": file, "path": path, "word_count": word_count})
         return dictionaries
 
     def create_dictionary(self, name: str, content: str) -> Dict[str, str]:

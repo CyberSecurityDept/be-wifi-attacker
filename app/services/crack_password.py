@@ -1,17 +1,11 @@
-# app/services/crack_password.py
-
 import os
-import sys
 import re
 import asyncio
-from typing import List, Dict, Optional, AsyncGenerator
-from datetime import datetime
+from typing import Dict, AsyncGenerator
 import subprocess
 
 
-async def crack_with_wordlist(
-    cap_file: str, bssid: str, wordlist_file: str
-) -> AsyncGenerator[Dict, None]:
+async def crack_with_wordlist(cap_file: str, bssid: str, wordlist_file: str) -> AsyncGenerator[Dict, None]:
     """Crack a captured handshake file using a wordlist file, yielding progress updates."""
     # Validate inputs
     if not os.path.exists(cap_file):
@@ -65,9 +59,7 @@ async def crack_with_wordlist(
             subprocess.check_call(f"ps -p {pid} > /dev/null", shell=True)
             print(f"Verified process {pid} is running")
         except subprocess.CalledProcessError:
-            print(
-                f"Warning: Process {pid} not found in process list right after starting"
-            )
+            print(f"Warning: Process {pid} not found in process list right after starting")
 
         # Track progress
         current_password = 0
@@ -97,12 +89,8 @@ async def crack_with_wordlist(
                             total_passwords = total_in_output
 
                         # Report progress
-                        percent = min(
-                            99, int(current_password * 100 / max(1, total_passwords))
-                        )
-                        print(
-                            f"Progress: {current_password}/{total_passwords} ({percent}%)"
-                        )
+                        percent = min(99, int(current_password * 100 / max(1, total_passwords)))
+                        print(f"Progress: {current_password}/{total_passwords} ({percent}%)")
                         yield {
                             "status": "progress",
                             "current": current_password,
@@ -137,15 +125,13 @@ async def crack_with_wordlist(
         else:
             # Check final output for password in case we missed it
             remaining_output, stderr = process.communicate()
-            print(f"Process finished. Checking remaining output for password")
+            print(f"Process finished. Checking remaining output for password")  # noqa
 
             if stderr:
                 print(f"STDERR output: {stderr}")
 
             if "KEY FOUND!" in remaining_output:
-                password_match = re.search(
-                    r"KEY FOUND!\s*\[\s*(.+?)\s*\]", remaining_output
-                )
+                password_match = re.search(r"KEY FOUND!\s*\[\s*(.+?)\s*\]", remaining_output)
                 if password_match:
                     password_found = password_match.group(1)
                     print(f"SUCCESS: Password found in final output: {password_found}")

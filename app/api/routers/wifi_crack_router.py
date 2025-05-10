@@ -24,9 +24,7 @@ async def start_crack(
     """Start a password cracking attempt on a captured handshake file."""
     try:
         service = WifiCrackService(db)
-        job_id = await service.start_crack(
-            req.bssid, req.handshake_file, req.dictionary_path
-        )
+        job_id = await service.start_crack(req.bssid, req.handshake_file, req.dictionary_path)
         return job_id
     except FileNotFoundError as e:
         raise HTTPException(
@@ -99,14 +97,10 @@ async def stream_crack(
 
         # Try to check if there's an existing process running that we can attach to
         try:
-            output = subprocess.check_output(
-                ["pgrep", "-f", f"aircrack-ng.*-b\s+{bssid}"], text=True
-            )
+            output = subprocess.check_output(["pgrep", "-f", f"aircrack-ng.*-b\s+{bssid}"], text=True)  # noqa
             if output.strip():
                 pid = output.strip().split("\n")[0]
-                print(
-                    f"Found existing aircrack-ng process (PID: {pid}) for {bssid}, attempting to recover"
-                )
+                print(f"Found existing aircrack-ng process (PID: {pid}) for {bssid}, attempting to recover")
         except subprocess.CalledProcessError:
             print(f"No existing aircrack-ng process found for {bssid}")
 

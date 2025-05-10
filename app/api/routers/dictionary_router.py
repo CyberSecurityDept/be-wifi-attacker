@@ -25,7 +25,6 @@ async def list_dictionaries():
     summary="Create a new dictionary",
 )
 async def create_dictionary(dict_create: DictionaryCreate):
-    """Create a new dictionary file with the provided wordlist."""
     try:
         return service.create_dictionary(dict_create.name, dict_create.content)
     except Exception as e:

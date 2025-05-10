@@ -21,9 +21,7 @@ class WifiCrackService:
         self.repo = WifiNetworkRepository(db)
         # Use the global dictionary to track cracks - this will be shared across all instances
         self._running_cracks = _GLOBAL_RUNNING_CRACKS
-        print(
-            f"WifiCrackService initialized with {len(self._running_cracks)} existing cracks"
-        )
+        print(f"WifiCrackService initialized with {len(self._running_cracks)} existing cracks")
         if self._running_cracks:
             print(f"Active BSSIDs: {list(self._running_cracks.keys())}")
 
@@ -32,9 +30,7 @@ class WifiCrackService:
         """Get a list of all active cracking jobs"""
         return list(_GLOBAL_RUNNING_CRACKS.keys())
 
-    async def start_crack(
-        self, bssid: str, handshake_file: str, dictionary_path: str
-    ) -> str:
+    async def start_crack(self, bssid: str, handshake_file: str, dictionary_path: str) -> str:
         """Start a password cracking attempt on a captured handshake file."""
         # Validate inputs
         if not os.path.exists(handshake_file):
@@ -43,9 +39,7 @@ class WifiCrackService:
         if not os.path.exists(dictionary_path):
             raise FileNotFoundError(f"Dictionary file not found: {dictionary_path}")
 
-        if bssid in self._running_cracks and not self._running_cracks[bssid].get(
-            "completed", False
-        ):
+        if bssid in self._running_cracks and not self._running_cracks[bssid].get("completed", False):
             raise ValueError(f"Cracking already in progress for {bssid}")
 
         # Use absolute paths to ensure files are found
@@ -132,9 +126,7 @@ class WifiCrackService:
                 "status": "running",
                 "total_keys": job["total_keys"],
                 "current_key": job["current_key"],
-                "percent": min(
-                    99, int(job["current_key"] * 100 / max(1, job["total_keys"]))
-                ),
+                "percent": min(99, int(job["current_key"] * 100 / max(1, job["total_keys"]))),
             }
 
         # Legacy process handling for backwards compatibility
@@ -190,8 +182,9 @@ class WifiCrackService:
                 try:
                     job["process"].terminate()
                     job["process"].wait(timeout=2)
-                except:
+                except Exception as e:
                     # If termination fails, force kill
+                    print(e)
                     job["process"].kill()
         except Exception as e:
             print(f"Error stopping crack process: {e}")
@@ -226,9 +219,7 @@ class WifiCrackService:
         # Send initial start event
         total_keys = job["total_keys"]
         pid = job.get("pid", process.pid)
-        start_msg = (
-            f"Starting to crack {bssid} with {total_keys} passwords (PID: {pid})"
-        )
+        start_msg = f"Starting to crack {bssid} with {total_keys} passwords (PID: {pid})"
         print(start_msg)
         yield f'event: start\ndata: {{"total_keys":{total_keys},"message":"{start_msg}"}}\n\n'
 
@@ -238,9 +229,7 @@ class WifiCrackService:
             ps_cmd = f"ps -p {pid} -o comm="
             result = subprocess.run(ps_cmd, shell=True, capture_output=True, text=True)
             if result.returncode == 0:
-                print(
-                    f"Confirmed aircrack-ng process is running with PID {pid}: {result.stdout.strip()}"
-                )
+                print(f"Confirmed aircrack-ng process is running with PID {pid}: {result.stdout.strip()}")
             else:
                 print(f"Warning: Process with PID {pid} not found in process list")
         except Exception as e:
@@ -263,10 +252,8 @@ class WifiCrackService:
                         progress_counter += 1
                         # Every 2 seconds, send current progress if we have data
                         progress_message = f"{current_password}/{total_keys}"
-                        percent = min(
-                            99, int(current_password * 100 / max(1, total_keys))
-                        )
-                        yield f'event: progress\ndata: {{"percent":{percent},"keys_tried":{current_password},"total_keys":{total_keys},"progress":"{progress_message}","counter":{progress_counter}}}\n\n'
+                        percent = min(99, int(current_password * 100 / max(1, total_keys)))
+                        yield f'event: progress\ndata: {{"percent":{percent},"keys_tried":{current_password},"total_keys":{total_keys},"progress":"{progress_message}","counter":{progress_counter}}}\n\n'  # noqa
                         last_update_time = time.time()
 
                     await asyncio.sleep(0.1)  # Brief pause if no output
@@ -299,16 +286,13 @@ class WifiCrackService:
                         job["current_key"] = current_password
 
                         # Send progress event with the full formatted information
-                        progress_message = (
-                            f"{current_password}/{total_keys} keys tested ({speed})"
-                        )
+                        progress_message = f"{current_password}/{total_keys} keys tested ({speed})"
                         print(f"Progress: {progress_message}")
 
                         # Send progress event with all the details
-                        yield f'event: progress\ndata: {{"keys_tried":{current_password},"total_keys":{total_keys},"progress":"{progress_message}","speed":"{speed}","elapsed":"{elapsed_time}"}}\n\n'
+                        yield f'event: progress\ndata: {{"keys_tried":{current_password},"total_keys":{total_keys},"progress":"{progress_message}","speed":"{speed}","elapsed":"{elapsed_time}"}}\n\n'  # noqa
                         last_update_time = time.time()
 
-                # Extract percentage information from format like 'Time left: 1 minute, 32 seconds                           21.92%'
                 elif "Time left" in line and "%" in line:
                     # Parse percentage at end of line
                     percent_match = re.search(r"(\d+\.\d+)%", line)
@@ -316,22 +300,16 @@ class WifiCrackService:
 
                     if percent_match:
                         percent = float(percent_match.group(1))
-                        time_left = (
-                            time_left_match.group(1).strip()
-                            if time_left_match
-                            else "unknown"
-                        )
+                        time_left = time_left_match.group(1).strip() if time_left_match else "unknown"
 
                         # If we have current key info, update with percentage
                         if job.get("current_key", 0) > 0:
                             current_password = job["current_key"]
                             progress_message = f"{current_password}/{total_keys} ({percent}%) - Time left: {time_left}"
-                            print(
-                                f"Progress percentage: {percent}% - Time left: {time_left}"
-                            )
+                            print(f"Progress percentage: {percent}% - Time left: {time_left}")
 
                             # Send progress event with percentage
-                            yield f'event: progress\ndata: {{"percent":{percent},"keys_tried":{current_password},"total_keys":{total_keys},"progress":"{progress_message}","time_left":"{time_left}"}}\n\n'
+                            yield f'event: progress\ndata: {{"percent":{percent},"keys_tried":{current_password},"total_keys":{total_keys},"progress":"{progress_message}","time_left":"{time_left}"}}\n\n'  # noqa
                             last_update_time = time.time()
 
                 # Try to extract current passphrase being tested
@@ -348,7 +326,7 @@ class WifiCrackService:
                             min(99, int(current_password * 100 / max(1, total_keys))),
                         )
 
-                        yield f'event: progress\ndata: {{"percent":{percent},"keys_tried":{current_password},"total_keys":{total_keys},"progress":"{progress_message}","current_passphrase":"{current_passphrase}"}}\n\n'
+                        yield f'event: progress\ndata: {{"percent":{percent},"keys_tried":{current_password},"total_keys":{total_keys},"progress":"{progress_message}","current_passphrase":"{current_passphrase}"}}\n\n'  # noqa
                         last_update_time = time.time()
 
                 # Also watch for speed info
@@ -361,15 +339,11 @@ class WifiCrackService:
                             unit = speed_match.group(2)
 
                             # Send an additional progress update with speed info
-                            progress_message = (
-                                f"{current_password}/{total_keys} at {speed} {unit}"
-                            )
-                            percent = min(
-                                99, int(current_password * 100 / max(1, total_keys))
-                            )
+                            progress_message = f"{current_password}/{total_keys} at {speed} {unit}"
+                            percent = min(99, int(current_password * 100 / max(1, total_keys)))
                             print(f"Speed update: {progress_message}")
 
-                            yield f'event: progress\ndata: {{"percent":{percent},"keys_tried":{current_password},"total_keys":{total_keys},"progress":"{progress_message}"}}\n\n'
+                            yield f'event: progress\ndata: {{"percent":{percent},"keys_tried":{current_password},"total_keys":{total_keys},"progress":"{progress_message}"}}\n\n'  # noqa
                             last_update_time = time.time()
                     except Exception as e:
                         print(f"Error parsing speed info: {e}")
@@ -403,12 +377,12 @@ class WifiCrackService:
                 yield f'event: success\ndata: {{"password":"{password_found}","keys_tried":{current_password}}}\n\n'
             elif job.get("completed", False):
                 # Job was marked as completed (possibly stopped manually)
-                yield f'event: error\ndata: {{"message":"Cracking stopped manually"}}\n\n'
+                yield f'event: error\ndata: {{"message":"Cracking stopped manually"}}\n\n'  # noqa
             else:
                 # No password found, mark as failed
                 job["completed"] = True
                 await self.repo.update_status(bssid, "Failed")
-                yield f'event: error\ndata: {{"message":"Password not found in wordlist"}}\n\n'
+                yield f'event: error\ndata: {{"message":"Password not found in wordlist"}}\n\n'  # noqa
 
         except Exception as e:
             # Handle any exceptions during the monitoring process
@@ -436,26 +410,20 @@ class WifiCrackService:
 
     def _extract_current_key(self, line: str) -> Optional[int]:
         """Extract current key count from aircrack-ng output line."""
-        line = (
-            line.decode("utf-8", errors="ignore") if isinstance(line, bytes) else line
-        )
+        line = line.decode("utf-8", errors="ignore") if isinstance(line, bytes) else line
         try:
             if "keys tested" in line:
                 parts = line.split()
                 for i, part in enumerate(parts):
                     if part == "keys" and i > 0:
                         return int(parts[i - 1].replace(",", ""))
-        except:
+        except Exception:
             pass
         return None
 
     def _extract_password_from_output(self, output: str) -> Optional[str]:
         """Extract password from aircrack-ng output if found."""
-        output = (
-            output.decode("utf-8", errors="ignore")
-            if isinstance(output, bytes)
-            else output
-        )
+        output = output.decode("utf-8", errors="ignore") if isinstance(output, bytes) else output
         try:
             if "KEY FOUND!" in output:
                 lines = output.split("\n")
@@ -465,7 +433,7 @@ class WifiCrackService:
                         start = line.find("[")
                         end = line.find("]")
                         if start > 0 and end > start:
-                            return line[start + 1 : end].strip()
-        except:
+                            return line[start + 1 : end].strip()  # noqa
+        except Exception:
             pass
         return None

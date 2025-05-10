@@ -1,4 +1,3 @@
-# app/schemas/wifi_network.py
 from pydantic import BaseModel
 from uuid import UUID
 

@@ -18,10 +18,7 @@ class WifiDeauthService:
         """Start a deauthentication attack on the specified access point.
         The attack will run indefinitely until stop_deauth is called."""
         # Check if attack is already running for this BSSID
-        if (
-            bssid in self._running_attacks
-            and self._running_attacks[bssid]["process"].poll() is None
-        ):
+        if bssid in self._running_attacks and self._running_attacks[bssid]["process"].poll() is None:
             raise ValueError(f"Deauth attack already in progress for {bssid}")
 
         # Enable monitor mode
@@ -88,12 +85,8 @@ class WifiDeauthService:
                 subprocess.run(["sudo", kill_script, bssid], stderr=subprocess.DEVNULL)
 
                 # Also try using regular kill methods in case the script fails
-                find_cmd = (
-                    f"ps -eo pid,command | grep -i 'mdk4.*-B {bssid}' | grep -v grep"
-                )
-                result = subprocess.run(
-                    find_cmd, shell=True, stdout=subprocess.PIPE, text=True
-                )
+                find_cmd = f"ps -eo pid,command | grep -i 'mdk4.*-B {bssid}' | grep -v grep"
+                result = subprocess.run(find_cmd, shell=True, stdout=subprocess.PIPE, text=True)
 
                 # Extract PIDs from the output and kill them
                 if result.stdout.strip():
@@ -103,9 +96,7 @@ class WifiDeauthService:
                             try:
                                 pid = int(parts[0])
                                 # Log the PID we're trying to kill
-                                print(
-                                    f"Found mdk4 process with PID {pid}, attempting to kill"
-                                )
+                                print(f"Found mdk4 process with PID {pid}, attempting to kill")
 
                                 # Try using sudo kill directly
                                 subprocess.run(
@@ -135,7 +126,7 @@ class WifiDeauthService:
             # Still try to disable monitor mode even if other operations failed
             try:
                 disable_monitor(interface)
-            except:
+            except Exception:
                 pass
             return False
 

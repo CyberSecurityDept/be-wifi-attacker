@@ -11,20 +11,15 @@ class WifiEvilTwinService:
         self.repo = WifiNetworkRepository(db)
         self._running_attacks = {}
 
-    async def start_evil_twin(
-        self, bssid: str, essid: str, channel: str, interface: str
-    ) -> str:
+    async def start_evil_twin(self, bssid: str, essid: str, channel: str, interface: str) -> str:
         """Start an evil twin attack using the specified access point information.
         The attack will run indefinitely until stop_evil_twin is called."""
         # Check if attack is already running for this BSSID
-        if (
-            bssid in self._running_attacks
-            and self._running_attacks[bssid]["status"] == "running"
-        ):
+        if bssid in self._running_attacks and self._running_attacks[bssid]["status"] == "running":
             raise ValueError(f"Evil twin attack already in progress for {bssid}")
 
         # Create a new virtual interface for the evil twin
-        twin_interface = f"at0"
+        twin_interface = f"at0"  # noqa
 
         # Enable monitor mode on the input interface
         enable_monitor(interface)
@@ -66,9 +61,7 @@ class WifiEvilTwinService:
             f.write("server=8.8.8.8\n")  # Forward DNS queries to Google DNS
             f.write("log-queries\n")
             f.write("log-dhcp\n")
-            f.write(
-                "address=/#/10.0.0.1\n"
-            )  # Redirect all domains to our captive portal
+            f.write("address=/#/10.0.0.1\n")  # Redirect all domains to our captive portal
 
         dnsmasq_proc = subprocess.Popen(
             ["dnsmasq", "-C", dnsmasq_conf, "-d"],
@@ -147,10 +140,7 @@ class WifiEvilTwinService:
                 counter += 1
 
                 # Check if processes are still running
-                if (
-                    attack["airbase_proc"].poll() is not None
-                    or attack["dnsmasq_proc"].poll() is not None
-                ):
+                if attack["airbase_proc"].poll() is not None or attack["dnsmasq_proc"].poll() is not None:
                     await self.stop_evil_twin(bssid)
                     yield 'event: error\ndata: {"message":"Process terminated unexpectedly"}\n\n'
                     return

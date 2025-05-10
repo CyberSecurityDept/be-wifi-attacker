@@ -1,5 +1,3 @@
-# app/schemas/wifi_deauth.py
-
 from typing import Optional
 from pydantic import BaseModel
 
