@@ -14,18 +14,11 @@ router = APIRouter(prefix="/wifi", tags=["wifi"])
     summary="Force kill all mdk4 processes",
 )
 def force_kill_mdk4():
-    """Forcefully kill all mdk4 processes regardless of their origin."""
     try:
-        # Try using our custom kill script with sudo (no BSSID parameter to kill all)
-        kill_script = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "kill_mdk4.sh"
-        )
+        kill_script = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "kill_mdk4.sh")
         subprocess.run(["sudo", kill_script], stderr=subprocess.DEVNULL)
-
-        # Also try direct commands
         subprocess.run(["sudo", "pkill", "-9", "-f", "mdk4"], stderr=subprocess.DEVNULL)
         subprocess.run(["sudo", "killall", "-9", "mdk4"], stderr=subprocess.DEVNULL)
-
         return {"message": "All mdk4 processes have been terminated"}
     except Exception as e:
         return {"message": f"Error terminating mdk4 processes: {str(e)}"}
@@ -36,29 +29,20 @@ def force_kill_mdk4():
     status_code=status.HTTP_200_OK,
     summary="Force kill mdk4 processes for specific BSSID",
 )
-async def force_kill_mdk4_for_bssid(
-    bssid: str, db: AsyncIOMotorDatabase = Depends(get_db)
-):
-    """Forcefully kill all mdk4 processes for a specific BSSID."""
+async def force_kill_mdk4_for_bssid(bssid: str, db: AsyncIOMotorDatabase = Depends(get_db)):
     try:
-        # Try using our custom kill script with sudo
-        kill_script = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "kill_mdk4.sh"
-        )
+        kill_script = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "kill_mdk4.sh")
         subprocess.run(["sudo", kill_script, bssid], stderr=subprocess.DEVNULL)
 
-        # Also try direct command
         subprocess.run(
             ["sudo", "pkill", "-9", "-f", f"mdk4.*-B {bssid}"],
             stderr=subprocess.DEVNULL,
         )
 
-        # Update status to Main after cleanup
         from app.repositories.wifi_network_repository import WifiNetworkRepository
 
         repo = WifiNetworkRepository(db)
         await repo.update_status(bssid, "Main")
-
         return {"message": f"All mdk4 processes for BSSID {bssid} have been terminated"}
     except Exception as e:
         return {"message": f"Error terminating mdk4 processes: {str(e)}"}

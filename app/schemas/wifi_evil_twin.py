@@ -3,13 +3,12 @@ from pydantic import BaseModel
 
 
 class EvilTwinRequest(BaseModel):
-    bssid: str
-    essid: str
     channel: int
     interface: str
+    hotspot_name: str
 
 
 class EvilTwinStatus(BaseModel):
-    status: str  # 'running', 'completed', 'not_found', 'stopped'
+    status: str
     elapsed: Optional[int] = None
     message: Optional[str] = None

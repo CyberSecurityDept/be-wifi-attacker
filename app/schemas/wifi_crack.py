@@ -10,7 +10,7 @@ class CrackRequest(BaseModel):
 
 
 class CrackStatus(BaseModel):
-    status: str  # 'running', 'completed', 'failed', 'not_found', 'stopped'
+    status: str
     password: Optional[str] = None
     total_keys: Optional[int] = None
     current_key: Optional[int] = None

@@ -10,6 +10,6 @@ class DeauthRequest(BaseModel):
 
 
 class DeauthStatus(BaseModel):
-    status: str  # 'running', 'completed', 'not_found', 'stopped'
+    status: str
     elapsed: Optional[int] = None
     message: Optional[str] = None

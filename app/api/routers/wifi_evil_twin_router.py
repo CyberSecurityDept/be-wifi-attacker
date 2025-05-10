@@ -18,13 +18,10 @@ async def start_evil_twin(
     req: EvilTwinRequest,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Start an evil twin attack mimicking the specified access point."""
     try:
         service = WifiEvilTwinService(db)
-        bssid = await service.start_evil_twin(
-            req.bssid, req.essid, str(req.channel), req.interface
-        )
-        return bssid
+        hotspot_name = await service.start_evil_twin(str(req.channel), req.interface, req.hotspot_name)
+        return hotspot_name
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -46,7 +43,6 @@ async def stop_evil_twin(
     bssid: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Stop a running evil twin attack."""
     service = WifiEvilTwinService(db)
     result = await service.stop_evil_twin(bssid)
     return result
@@ -61,7 +57,6 @@ async def stream_evil_twin(
     bssid: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Stream the progress of an evil twin attack via Server-Sent Events."""
     service = WifiEvilTwinService(db)
 
     return StreamingResponse(

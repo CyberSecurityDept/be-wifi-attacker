@@ -85,10 +85,7 @@ class WifiHandshakeService:
             )
             return (await proc.wait()) == 0
         except FileNotFoundError:
-            # tshark command not found
-            print(
-                "Error: tshark command not found. Please install it with 'sudo apt-get install tshark'"
-            )
+            print("Error: tshark command not found. Please install it with 'sudo apt-get install tshark'")
             return False
         except Exception as e:
             print(f"Error checking for EAPOL frames: {e}")
@@ -123,7 +120,6 @@ class WifiHandshakeService:
 
             try:
                 while loop < max_loops:
-                    # Always provide a heartbeat to keep the connection alive
                     yield f"event: heartbeat\ndata: {loop}\n\n"
 
                     await asyncio.sleep(INTERVAL)
@@ -132,25 +128,17 @@ class WifiHandshakeService:
                     if await self.poll_eapol():
                         yield "event: progress\ndata: 100\n\n"
                         await self.finalize()
-                        yield (
-                            f'event: done\ndata: {{"handshake_file":"'
-                            f'{self.final_cap}"}}\n\n'
-                        )
+                        yield (f'event: done\ndata: {{"handshake_file":"' f'{self.final_cap}"}}\n\n')
                         return
 
                     pct = min(loop * 100 // max_loops, 99)
                     yield f"event: progress\ndata: {pct}\n\n"
 
                 yield "event: progress\ndata: 100\n\n"
-                yield (
-                    "event: error\ndata: "
-                    '{"message":"timeout: no EAPOL frames captured"}\n\n'
-                )
+                yield ("event: error\ndata: " '{"message":"timeout: no EAPOL frames captured"}\n\n')
             except Exception as e:
-                # Yield error event if something goes wrong during capture
                 yield f'event: error\ndata: {{"message":"Error during handshake capture: {str(e)}"}}\n\n'
             finally:
                 await self.abort()
         except Exception as e:
-            # Catch and report any errors that might occur during service startup
             yield f'event: error\ndata: {{"message":"Failed to start handshake capture: {str(e)}"}}\n\n'

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Request
 from typing import List
 
 from app.schemas.dictionary import DictionaryRead, DictionaryCreate
@@ -14,7 +14,6 @@ service = DictionaryService()
     summary="List all available dictionaries",
 )
 async def list_dictionaries():
-    """List all available dictionaries for WiFi cracking."""
     return service.list_dictionaries()
 
 
@@ -34,13 +33,30 @@ async def create_dictionary(dict_create: DictionaryCreate):
         )
 
 
+@router.post(
+    "/custom-generate",
+    response_model=DictionaryRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Generate custom wordlist",
+)
+async def custom_generate(request: Request):
+    try:
+        params = await request.json()
+        result = service.generate_custom_wordlist(params)
+        return DictionaryRead(name=result["name"], path=result["path"], word_count=result["word_count"])
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate custom wordlist: {str(e)}",
+        )
+
+
 @router.delete(
     "/{name}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a dictionary",
 )
 async def delete_dictionary(name: str):
-    """Delete a dictionary file by name."""
     success = service.delete_dictionary(name)
     if not success:
         raise HTTPException(

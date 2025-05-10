@@ -18,7 +18,6 @@ async def start_deauth(
     req: DeauthRequest,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Start a deauthentication attack on the specified access point."""
     try:
         service = WifiDeauthService(db)
         bssid = await service.start_deauth(req.bssid, str(req.channel), req.interface)
@@ -44,7 +43,6 @@ async def stop_deauth(
     bssid: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Stop a running deauthentication attack."""
     service = WifiDeauthService(db)
     result = await service.stop_deauth(bssid)
     if not result:
@@ -64,7 +62,6 @@ async def stream_deauth(
     bssid: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Stream the progress of a deauth attack via Server-Sent Events."""
     service = WifiDeauthService(db)
 
     return StreamingResponse(

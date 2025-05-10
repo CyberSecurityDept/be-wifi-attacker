@@ -33,7 +33,6 @@ async def stream_scan(
                     yield f"data: {entry.json()}\n\n"
                 await asyncio.sleep(1)
         finally:
-            # final batch + done event
             final = await service.stop_scan(interface)
             for entry in final:
                 yield f"data: {entry.json()}\n\n"
