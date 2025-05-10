@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic
+motor
+pydantic-settings
+pydantic[email]
+flake8
+black

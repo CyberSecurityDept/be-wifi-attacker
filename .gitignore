@@ -1,0 +1,9 @@
+__pycache__/
+.DS_Store
+venv/
+.env
+dictionaries/
+captures/
+project.zip
+wpa2
+hostapd_configs/

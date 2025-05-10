@@ -1,0 +1,1 @@
+on start crack function make the dictionary_path to dictionaries, so user only input dictionary name, and handshake_file on captures directory then take the latest datetime with the SSID from the filename, here's the sample 2025-05-08_0859-Mripati.cap
