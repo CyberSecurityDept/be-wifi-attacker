@@ -25,6 +25,20 @@ def force_kill_mdk4():
 
 
 @router.post(
+    "/cleanup/evil-twin",
+    status_code=status.HTTP_200_OK,
+    summary="Force kill all create_ap (Evil Twin) processes",
+)
+def force_kill_create_ap():
+    try:
+        subprocess.run(["sudo", "pkill", "-9", "-f", "create_ap"], stderr=subprocess.DEVNULL)
+        subprocess.run(["sudo", "killall", "-9", "create_ap"], stderr=subprocess.DEVNULL)
+        return {"message": "All create_ap (evil twin) processes have been terminated"}
+    except Exception as e:
+        return {"message": f"Error terminating create_ap processes: {str(e)}"}
+
+
+@router.post(
     "/cleanup/mdk4/{bssid}",
     status_code=status.HTTP_200_OK,
     summary="Force kill mdk4 processes for specific BSSID",

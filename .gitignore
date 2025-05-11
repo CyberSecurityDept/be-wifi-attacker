@@ -7,3 +7,4 @@ captures/
 project.zip
 wpa2
 hostapd_configs/
+*.log

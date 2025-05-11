@@ -10,5 +10,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     API_PREFIX: str = "/api/v1"
 
+    alfa_interface: str
+    internet_interface: str
+
 
 settings = Settings()
