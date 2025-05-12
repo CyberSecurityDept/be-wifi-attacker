@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.api.deps import get_db
+from app.core.config import settings
 from app.schemas.wifi_evil_twin import EvilTwinRequest, EvilTwinStatus
 from app.services.wifi_evil_twin_service import WifiEvilTwinService
 
@@ -18,12 +19,6 @@ async def start_evil_twin(
     req: EvilTwinRequest,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """
-    Start an Evil Twin attack. If 'interface' or 'hotspot_name' are not provided,
-    use default from settings or set hotspot_name to essid.
-    """
-    from app.core.config import settings
-
     try:
         interface = req.interface or settings.alfa_interface
         hotspot_name = req.hotspot_name or req.essid

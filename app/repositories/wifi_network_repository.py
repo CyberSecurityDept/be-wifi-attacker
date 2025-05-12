@@ -66,6 +66,32 @@ class WifiNetworkRepository:
         await self.col.update_one({"bssid": bssid}, {"$set": {"status": status}})
 
     async def update_handshake(self, bssid: str, handshake_file: str) -> None:
-        await self.col.update_one(
-            {"bssid": bssid}, {"$set": {"handshake_file": handshake_file}}
+        await self.col.update_one({"bssid": bssid}, {"$set": {"handshake_file": handshake_file}})
+
+    async def update_key(self, bssid: str, key: str) -> None:
+        await self.col.update_one({"bssid": bssid}, {"$set": {"key": key}})
+
+    async def get_cracked_by_id(self, id: str) -> WifiNetworkRead:
+        d = await self.col.find_one({"_id": id, "status": "Cracked"})
+        if not d:
+            return None
+
+        return WifiNetworkRead(
+            id=UUID(d["_id"]),
+            bssid=d["bssid"],
+            first_seen=d["first_seen"],
+            last_seen=d["last_seen"],
+            channel=d["channel"],
+            speed=d["speed"],
+            privacy=d["privacy"],
+            cipher=d["cipher"],
+            auth=d["auth"],
+            power=d["power"],
+            beacons=d["beacons"],
+            iv=d["iv"],
+            lan_ip=d["lan_ip"],
+            id_length=d["id_length"],
+            essid=d["essid"],
+            key=d["key"],
+            status=d.get("status", "Main"),
         )

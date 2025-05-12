@@ -39,7 +39,7 @@ class WifiDeauthService:
             "completed": False,
         }
 
-        await self.repo.update_status(bssid, "Deauth")
+        await self.repo.update_status(bssid, "Attacking")
 
         return bssid
 

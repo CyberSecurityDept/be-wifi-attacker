@@ -123,6 +123,7 @@ class WifiCrackService:
 
             if password:
                 await self.repo.update_status(bssid, "Cracked")
+                await self.repo.update_key(bssid, password)
                 job["password"] = password
             else:
                 await self.repo.update_status(bssid, "Failed")
@@ -315,6 +316,7 @@ class WifiCrackService:
                 job["password"] = password_found
                 job["completed"] = True
                 await self.repo.update_status(bssid, "Cracked")
+                await self.repo.update_key(bssid, password_found)
                 yield f'event: success\ndata: {{"password":"{password_found}","keys_tried":{current_password}}}\n\n'
             elif job.get("completed", False):
                 yield f'event: error\ndata: {{"message":"Cracking stopped manually"}}\n\n'  # noqa
@@ -360,13 +362,14 @@ class WifiCrackService:
         output = output.decode("utf-8", errors="ignore") if isinstance(output, bytes) else output
         try:
             if "KEY FOUND!" in output:
-                lines = output.split("\n")
-                for line in lines:
-                    if "KEY FOUND!" in line:
-                        start = line.find("[")
-                        end = line.find("]")
-                        if start > 0 and end > start:
-                            return line[start + 1 : end].strip()  # noqa
-        except Exception:
-            pass
+                import re
+
+                match = re.search(r"KEY FOUND!\s*\[\s*([^\]]+)\s*\]", output)
+                if match:
+                    password = match.group(1).strip()
+                    password = re.sub(r"\x1b\[[^m]*m|\x1b\[\d+[A-Z]", "", password)
+                    password = re.sub(r"[\x00-\x1F\x7F]", "", password)
+                    return password
+        except Exception as e:
+            print(f"Error extracting password: {e}")
         return None

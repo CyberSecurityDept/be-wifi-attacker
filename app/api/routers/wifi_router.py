@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from typing import List
 import asyncio
@@ -57,3 +57,19 @@ async def stream_scan(
 async def list_wifi(db: AsyncIOMotorDatabase = Depends(get_db)):
     service = WifiScanService(db)
     return await service.repo.list_all()
+
+
+@router.get(
+    "/cracked/{id}",
+    response_model=WifiNetworkRead,
+    summary="Get cracked WiFi network by ID",
+)
+async def get_cracked_wifi_by_id(id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
+    service = WifiScanService(db)
+    result = await service.repo.get_cracked_by_id(id)
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Cracked WiFi network with ID {id} not found",
+        )
+    return result

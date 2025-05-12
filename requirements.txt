@@ -6,3 +6,4 @@ pydantic-settings
 pydantic[email]
 flake8
 black
+pymongo
