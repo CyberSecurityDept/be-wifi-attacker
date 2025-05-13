@@ -36,7 +36,7 @@ class WifiEvilTwinService:
             raise ValueError(f"Evil twin attack already in progress for hotspot '{hotspot_name}'")
 
         try:
-            create_ap_cmd = ["sudo", "create_ap", "-n", alfa_interface, hotspot_name]
+            create_ap_cmd = ["sudo", "create_ap", "-m", "bridge", "wlp2s0", alfa_interface, hotspot_name]
             if channel:
                 create_ap_cmd += ["-c", str(channel)]
             evil_twin_logger.info(f"[EvilTwin] Running: {' '.join(create_ap_cmd)}")
