@@ -31,6 +31,10 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir -r requirements.txt
 
+# Create log files
+RUN touch /app/app.log /app/evil_twin.log && \
+    chmod 666 /app/app.log /app/evil_twin.log
+
 COPY . .
 
 EXPOSE 8000
