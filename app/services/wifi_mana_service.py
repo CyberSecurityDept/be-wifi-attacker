@@ -1,94 +1,161 @@
-# app/services/wifi_mana_service.py
-
-DEBUG_MODE = True  # Set ke True untuk debugging, False untuk production
-
 import os
 import subprocess
 import asyncio
 import tempfile
 import datetime
+import json
 import logging
 import re
 from typing import Dict, AsyncGenerator
+import uuid
+import shutil
 
 from app.helpers.network import enable_monitor, disable_monitor
 from app.repositories.wifi_network_repository import WifiNetworkRepository
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("wifi_mana")
 
 
-# Global registry for async WPA3 cracks (shared across all service instances)
 GLOBAL_RUNNING_CRACKS = {}
+DEBUG_MODE = False
 
 
 class WifiManaService:
     def __init__(self, db):
         self.repo = WifiNetworkRepository(db)
         self._running_attacks = {}
-        # GLOBAL_RUNNING_CRACKS removed, use GLOBAL_RUNNING_CRACKS
 
     def get_job(self, bssid):
         return GLOBAL_RUNNING_CRACKS.get(bssid)
 
+    def normalize_bssid(self, bssid):
+        """Normalisasi BSSID ke format XX:XX:XX:XX:XX:XX"""
+        bssid = bssid.replace("-", "").replace(":", "").lower()
+        return ":".join([bssid[i : i + 2] for i in range(0, 12, 2)]).upper()  # noqa
 
-    async def start_crack(self, essid: str, bssid: str, handshake_file: str, wordlist_file: str) -> dict:
-        """Start WPA3 crack as an async job, suitable for large dictionary."""
+    async def start_crack(
+        self, essid: str, bssid: str, handshake_file: str, wordlist_file: str, max_retries: int = 3
+    ) -> dict:
+        bssid = self.normalize_bssid(bssid)
+
+        if bssid in GLOBAL_RUNNING_CRACKS:
+            return {"status": "already_running", "bssid": bssid}
+
         if DEBUG_MODE:
-            logger.info(f"[DEBUG] start_crack called: bssid={bssid}, essid={essid}, handshake={handshake_file}, wordlist={wordlist_file}")
-            
-        if not os.path.exists(handshake_file):
+            logger.info(f"[DEBUG] Starting crack for BSSID: {bssid}, ESSID: {essid}")
+
+        if not (handshake_file and os.path.exists(handshake_file)):
             logger.error(f"[ERROR] Handshake file not found: {handshake_file}")
             return {"status": "error", "message": f"Handshake file not found: {handshake_file}"}
-            
-        if not os.path.exists(wordlist_file):
+
+        if not (wordlist_file and os.path.exists(wordlist_file)):
             logger.error(f"[ERROR] Wordlist file not found: {wordlist_file}")
             return {"status": "error", "message": f"Wordlist file not found: {wordlist_file}"}
-            
-        if bssid in GLOBAL_RUNNING_CRACKS and not GLOBAL_RUNNING_CRACKS[bssid].get("completed", False):
-            logger.warning(f"[WARNING] Cracking already in progress for {bssid}")
-            return {"status": "error", "message": f"Cracking already in progress for {bssid}"}
-            
-        # Count total keys
+
+        handshake_copy = f"/tmp/{uuid.uuid4().hex}.hccapx"
+        wordlist_copy = f"/tmp/{uuid.uuid4().hex}.txt"
+        shutil.copy(handshake_file, handshake_copy)
+        shutil.copy(wordlist_file, wordlist_copy)
+
+        total_keys = 0
         try:
-            with open(wordlist_file, "r", errors="ignore") as f:
+            with open(wordlist_copy, "r", errors="ignore") as f:
                 total_keys = sum(1 for line in f if line.strip())
             if DEBUG_MODE:
                 logger.info(f"[DEBUG] Total keys in wordlist: {total_keys}")
         except Exception as e:
             logger.error(f"[ERROR] Failed to count total keys: {str(e)}")
             total_keys = 0
-            
+
         cmd = [
             "hashcat",
             "-a",
             "0",
             "-m",
             "2500",
-            handshake_file,
-            wordlist_file,
+            handshake_copy,
+            wordlist_copy,
             "--potfile-disable",
             "--status",
             "--status-timer=1",
         ]
-        
+
+        async def cleanup_temp_files():
+            try:
+                if os.path.exists(handshake_copy):
+                    os.remove(handshake_copy)
+                if os.path.exists(wordlist_copy):
+                    os.remove(wordlist_copy)
+            except Exception as e:
+                logger.warning(f"[WARNING] Failed to cleanup temp files: {str(e)}")
+
         if DEBUG_MODE:
             logger.info(f"[DEBUG] Executing command: {' '.join(cmd)}")
-            
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            if DEBUG_MODE:
-                logger.info(f"[DEBUG] Hashcat process started with PID: {proc.pid}")
-                
-        except Exception as e:
-            logger.error(f"[ERROR] Failed to start hashcat: {str(e)}")
-            return {"status": "error", "message": f"Failed to start hashcat: {str(e)}"}
-            
+
+        proc = None
+        retry_count = 0
+        last_error = None
+        max_retries = 3
+
+        while retry_count < max_retries:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                if DEBUG_MODE:
+                    logger.info(
+                        f"[DEBUG] Hashcat process started with PID: {proc.pid}, attempt {retry_count + 1}/{max_retries}"
+                    )
+
+                if proc.returncode is not None:
+                    stdout, stderr = await proc.communicate()
+                    err_output = stderr.decode() if stderr else "No error output"
+                    error_msg = f"Hashcat exited immediately with code {proc.returncode}. Error: {err_output}"
+                    logger.warning(f"[WARNING] {error_msg} - Retry {retry_count + 1}/{max_retries}")
+                    last_error = error_msg
+                    retry_count += 1
+                    await cleanup_temp_files()
+
+                    handshake_copy = f"/tmp/{uuid.uuid4().hex}.hccapx"
+                    wordlist_copy = f"/tmp/{uuid.uuid4().hex}.txt"
+                    shutil.copy(handshake_file, handshake_copy)
+                    shutil.copy(wordlist_file, wordlist_copy)
+                    cmd[5] = handshake_copy
+                    cmd[6] = wordlist_copy
+                    await asyncio.sleep(1)
+                    continue
+                else:
+                    break
+
+            except Exception as e:
+                error_msg = f"Failed to start hashcat: {str(e)}"
+                logger.warning(f"[WARNING] {error_msg} - Retry {retry_count + 1}/{max_retries}")
+                last_error = error_msg
+                retry_count += 1
+                await cleanup_temp_files()
+
+                handshake_copy = f"/tmp/{uuid.uuid4().hex}.hccapx"
+                wordlist_copy = f"/tmp/{uuid.uuid4().hex}.txt"
+                shutil.copy(handshake_file, handshake_copy)
+                shutil.copy(wordlist_file, wordlist_copy)
+                cmd[5] = handshake_copy
+                cmd[6] = wordlist_copy
+                await asyncio.sleep(1)
+                continue
+
+        if retry_count >= max_retries:
+            logger.error(f"[ERROR] Failed to start hashcat after {max_retries} attempts. Last error: {last_error}")
+            await cleanup_temp_files()
+            return {"status": "error", "message": f"Failed to start hashcat after {max_retries} attempts: {last_error}"}
+
+        if proc is None:
+            logger.error("[ERROR] Failed to create hashcat process, but no error was caught")
+            await cleanup_temp_files()
+            return {"status": "error", "message": "Failed to create hashcat process, but no error was caught"}
+
         GLOBAL_RUNNING_CRACKS[bssid] = {
             "process": proc,
             "essid": essid,
@@ -101,25 +168,26 @@ class WifiManaService:
             "total_keys": total_keys,
             "output": [],
         }
-        
+
         await self.repo.update_status(bssid, "Cracking")
         logger.info(f"[INFO] Cracking job started for BSSID: {bssid}, ESSID: {essid}")
         return {"status": "started", "bssid": bssid}
 
     async def crack_status(self, bssid: str) -> dict:
         job = GLOBAL_RUNNING_CRACKS.get(bssid)
+
         if not job:
             return {"status": "not_found", "message": f"No cracking job for {bssid}"}
+
         proc = job["process"]
         if not job["completed"]:
-            # Jika proses sudah selesai, parse output dan update status
             if proc.returncode is not None:
                 stdout, stderr = await proc.communicate()
                 output = (stdout.decode() if stdout else "") + (stderr.decode() if stderr else "")
                 password = None
                 current_key = None
+
                 for line in output.splitlines():
-                    # Parsing password hanya dari baris WPA hashcat valid
                     if re.match(r"^[0-9a-fA-F]{12}:[0-9a-fA-F]{12}:.+:.+$", line.strip()):
                         parts = line.strip().split(":")
                         if len(parts) == 4:
@@ -144,7 +212,6 @@ class WifiManaService:
                     job["completed"] = True
                     await self.repo.update_status(bssid, "Failed")
         if job["completed"]:
-            # Samakan logic dengan WPA2: jika password ditemukan dan current_key belum terisi, set ke total_keys
             if job["password"] and (not job["current_key"] or job["current_key"] < 1):
                 job["current_key"] = job["total_keys"]
             percent = (job["current_key"] / job["total_keys"] * 100) if job["total_keys"] else 0
@@ -167,47 +234,63 @@ class WifiManaService:
     async def crack_stream(self, bssid: str) -> AsyncGenerator[str, None]:
         if DEBUG_MODE:
             logger.info(f"[DEBUG] crack_stream entered for BSSID: {bssid}")
-            
+
         job = GLOBAL_RUNNING_CRACKS.get(bssid)
         if not job:
             logger.warning(f"[WARNING] No cracking job found for BSSID: {bssid}")
             yield 'event: error\ndata: {"message":"No cracking job found"}\n\n'
             return
-            
-        # Cek file handshake dan wordlist
+
         handshake_file = job.get("handshake_file")
         wordlist_file = job.get("wordlist_file")
-        
+
         if not (handshake_file and os.path.exists(handshake_file)):
             logger.error(f"[ERROR] Handshake file not found: {handshake_file}")
             yield f'event: error\ndata: {{"message":"Handshake file not found: {handshake_file}"}}\n\n'
             return
-            
+
         if not (wordlist_file and os.path.exists(wordlist_file)):
             logger.error(f"[ERROR] Wordlist file not found: {wordlist_file}")
             yield f'event: error\ndata: {{"message":"Wordlist file not found: {wordlist_file}"}}\n\n'
             return
-            
+
         proc = job["process"]
         if proc.returncode is not None:
-            logger.warning(f"[WARNING] Hashcat process already exited with code: {proc.returncode}")
-            yield f'event: error\ndata: {{"message":"Hashcat process already exited with code: {proc.returncode}"}}\n\n'
+            if bssid in GLOBAL_RUNNING_CRACKS:
+                del GLOBAL_RUNNING_CRACKS[bssid]
+            try:
+                stdout, stderr = await proc.communicate(timeout=0.1)  # Non-blocking since process already exited
+                stdout_text = stdout.decode() if stdout else ""
+                stderr_text = stderr.decode() if stderr else ""
+                error_msg = stderr_text if stderr_text else stdout_text
+                logger.warning(f"[WARNING] Hashcat process already exited with code {proc.returncode}: {error_msg}")
+                error_json = json.dumps(
+                    {"message": f"Hashcat process already exited with code {proc.returncode}: {error_msg}"}
+                )
+                yield f"event: error\ndata: {error_json}\n\n"
+            except asyncio.TimeoutError:
+                # This shouldn't happen since the process already exited
+                logger.warning(f"[WARNING] Hashcat process already exited with code {proc.returncode}")
+                yield f'event: error\ndata: {{"message":"Hashcat process already exited with code {proc.returncode}"}}\n\n'  # noqa
+            except Exception as e:
+                logger.warning(f"[WARNING] Error capturing hashcat output: {str(e)}")
+                yield f'event: error\ndata: {{"message":"Hashcat process already exited with code {proc.returncode}"}}\n\n'  # noqa
             return
-            
+
         # Kirim event start dan initial progress
         logger.info(f"[INFO] Cracking stream started for BSSID: {bssid}")
         yield 'event: start\ndata: {"message":"Crack started"}\n\n'
-        
+
         # Kirim event progress awal dengan 0%
-        initial_progress = f'event: progress\ndata: {{"current_key": 0, "total_keys": {job["total_keys"]}, "percent": 0.00, "status": "cracking"}}\n\n'
+        initial_progress = f'event: progress\ndata: {{"current_key": 0, "total_keys": {job["total_keys"]}, "percent": 0.00, "status": "cracking"}}\n\n'  # noqa
         if DEBUG_MODE:
             logger.info(f"[DEBUG] Sending initial progress: {initial_progress}")
         yield initial_progress
-        
+
         try:
             if DEBUG_MODE:
                 logger.info(f"[DEBUG] Starting to read hashcat output for BSSID: {bssid}")
-                
+
             line_count = 0
             while True:
                 try:
@@ -216,48 +299,45 @@ class WifiManaService:
                         # Cek status proses
                         if proc.returncode is not None:
                             if DEBUG_MODE:
-                                logger.info(f"[DEBUG] Hashcat process exited with code: {proc.returncode}")
+                                logger.info(f"[DEBUG] Hashcat process exited with code 2: {proc.returncode}")
                             break
                         await asyncio.sleep(0.2)
                         continue
-                        
+
                     decoded = line.decode(errors="ignore").strip()
                     line_count += 1
-                    
-                    if DEBUG_MODE and line_count % 5 == 0:  # Log setiap 5 baris untuk mengurangi log spam
+
+                    if DEBUG_MODE and line_count % 5 == 0:
                         logger.info(f"[DEBUG] Hashcat output: {decoded}")
-                        
+
                     job["output"].append(decoded)
-                    
-                    # Parse password completed pattern
+
                     if re.search(r"Status\.*: Cracked", decoded) or re.search(r":[^:]+:[^:]+:[^:]+$", decoded):
                         if DEBUG_MODE:
                             logger.info(f"[DEBUG] Possible password found in line: {decoded}")
-                            
+
                 except Exception as e:
                     logger.error(f"[ERROR] Error processing hashcat output: {str(e)}")
                     yield f'event: error\ndata: {{"message":"Error processing hashcat output: {str(e)}"}}\n\n'
                     await asyncio.sleep(1)
                     continue
-                    
-                # Parse progress dari berbagai format output hashcat
+
                 if not line:
-                    # Cek status proses
                     if proc.returncode is not None:
                         if DEBUG_MODE:
-                            logger.info(f"[DEBUG] Hashcat process exited with code: {proc.returncode}")
+                            logger.info(f"[DEBUG] Hashcat process exited with code 3: {proc.returncode}")
                         break
                     await asyncio.sleep(0.2)
                     continue
-                        
+
                 decoded = line.decode(errors="ignore").strip()
                 line_count += 1
-                    
-                if DEBUG_MODE and line_count % 5 == 0:  # Log setiap 5 baris untuk mengurangi log spam
+
+                if DEBUG_MODE and line_count % 5 == 0:
                     logger.info(f"[DEBUG] Hashcat output: {decoded}")
-                        
+
                 job["output"].append(decoded)
-                    
+
                 # Parse progress dari berbagai format output hashcat
                 # 1. Progress pattern: Progress.....: 130/278 (46.76%)
                 progress_match = re.search(r"Progress\.\.*: (\d+)/(\d+)", decoded)
@@ -270,28 +350,24 @@ class WifiManaService:
                         f'{{"current_key": {job["current_key"]}, "total_keys": {job["total_keys"]}, '
                         f'"percent": {percent:.2f}, "status": "cracking"}}\n\n'
                     )
-                    if DEBUG_MODE:
-                        logger.info(f"[DEBUG] Sending progress update: current_key={job['current_key']}, total_keys={job['total_keys']}, percent={percent:.2f}")
                     yield progress_event
-                    
+
                 # 2. Alternative hash progress pattern: Recovered.....: 1/3 (33.33%) Digests
                 elif re.search(r"Recovered\.\.*: (\d+)/(\d+)", decoded):
                     hash_match = re.search(r"Recovered\.\.*: (\d+)/(\d+)", decoded)
                     if hash_match and int(hash_match.group(2)) > 0:  # Make sure denominator isn't zero
                         recovered = int(hash_match.group(1))
                         total = int(hash_match.group(2))
-                        percent = (recovered / total * 100)
+                        percent = recovered / total * 100
                         if DEBUG_MODE:
                             logger.info(f"[DEBUG] Found hash recovery line: {recovered}/{total} ({percent:.2f}%)")
                         # Don't update job status here, just for info
-                
+
                 # 3. Coba deteksi password dari berbagai format output
                 # Pattern WPA output dengan berbagai format dan handling escape characters
                 elif "Kopi Kenangan - Cikunir" in decoded and "KenanganMantan" in decoded:
-                    # Pattern khusus untuk network ini yang sudah diketahui
                     if DEBUG_MODE:
                         logger.info(f"[DEBUG] Found target network in line: {decoded}")
-                    # Extract password: ambil semua teks setelah ESSID sampai akhir line atau karakter tertentu
                     password_match = re.search(r"Kopi Kenangan - Cikunir:([^\"\n}]+)", decoded)
                     if password_match:
                         password = password_match.group(1).strip()
@@ -299,31 +375,31 @@ class WifiManaService:
                             logger.info(f"[DEBUG] Found password match: {password}")
                         job["password"] = password
                         yield f'event: password_found\ndata: {{"password": "{password}"}}\n\n'
-                
-                # 3.1 Pattern umum: MAC:HASH:ESSID:PASSWORD untuk semua network
+
                 elif ":" in decoded and len(decoded.split(":")) >= 4:
-                    # Cek pola MAC address dengan hash dan password
-                    mac_pattern = r"([0-9a-fA-F]{8,12}:[0-9a-fA-F]{8,12}:[^:]+):([^:]+)"
+                    # Standard WPA/WPA2/WPA3 hashcat output format: MAC:HASH:ESSID:PASSWORD
+                    # Example: 00c0cab75392:46d01ca7e014:Embassy of the KSA:kedubesArab2025@@!!
+                    mac_pattern = r"([0-9a-fA-F]{8,12}):([0-9a-fA-F]{8,12}):(.*?):(.*?)$"
                     match = re.search(mac_pattern, decoded)
-                    if match:
-                        essid_part = match.group(1)
-                        password = match.group(2).strip().rstrip('\"}')
+                    if match and len(match.groups()) >= 4:
+                        essid = match.group(3).strip()
+                        password = match.group(4).strip()
                         if DEBUG_MODE:
-                            logger.info(f"[DEBUG] Found password match: {password} from {essid_part}")
+                            logger.info(f"[DEBUG] Found password match: '{password}' for ESSID: '{essid}'")
                         job["password"] = password
                         yield f'event: password_found\ndata: {{"password": "{password}"}}\n\n'
-                
+
                 # Default: kirim raw output line untuk debugging
                 elif DEBUG_MODE and decoded:
                     # Hanya kirim event raw_output jika dalam debug mode
                     yield f'event: raw_output\ndata: {{"line": "{decoded}"}}\n\n'
             # After process ends, check if we already have password from streaming
             if DEBUG_MODE:
-                logger.info(f"[DEBUG] Hashcat process completed. Checking for password")
-                
+                logger.info(f"[DEBUG] Hashcat process completed. Checking for password")  # noqa
+
             # Check if password was already found during streaming
             password = job.get("password")
-            
+
             # If not found, try to extract from final output
             if not password:
                 if DEBUG_MODE:
@@ -336,25 +412,40 @@ class WifiManaService:
                         if len(parts) == 4:
                             password = parts[3]
                             break
-            
+
             # Finalize job status and update database
             job["completed"] = True
             if password:
                 if DEBUG_MODE:
                     logger.info(f"[DEBUG] Password found: {password}")
-                
+
                 # Always update password in database
-                await self.repo.update_status(bssid, "Cracked")
-                await self.repo.col.update_one(
+                if DEBUG_MODE:
+                    logger.info(f"[DEBUG] Updating database for BSSID {bssid} with password {password}")
+
+                # Coba update dengan BSSID dulu
+                result = await self.repo.col.update_one(
                     {"bssid": bssid}, {"$set": {"key": password.strip(), "status": "Cracked"}}
                 )
-                
+
+                # Jika tidak ada yang terupdate dengan BSSID, coba dengan ESSID
+                if result.modified_count == 0 and job.get("essid"):
+                    essid = job.get("essid")
+                    if DEBUG_MODE:
+                        logger.info(f"[DEBUG] BSSID not found, trying to update using ESSID: {essid}")
+                    await self.repo.col.update_one(
+                        {"essid": essid}, {"$set": {"key": password.strip(), "status": "Cracked"}}
+                    )
+
+                # Update status cache juga
+                await self.repo.update_status(bssid, "Cracked")
+
                 # Send final success event
-                yield f'event: done\ndata: {{"message": "Crack success", "password": "{password.strip()}", "status": "cracked"}}\n\n'
+                yield f'event: done\ndata: {{"message": "Crack success", "password": "{password.strip()}", "status": "cracked"}}\n\n'  # noqa
             else:
                 if DEBUG_MODE:
                     logger.warning("[WARNING] No password found after completion")
-                    
+
                 await self.repo.update_status(bssid, "Failed")
                 yield 'event: done\ndata: {"message": "Password not found in wordlist.", "status": "failed"}\n\n'
         except Exception as e:
